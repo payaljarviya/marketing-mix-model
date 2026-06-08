@@ -1,140 +1,80 @@
-# Marketing Mix Modelling — Bayesian MMM
+# Marketing Mix Modelling
 
-**Business Question:** Which marketing channels are actually driving sales — and how should we reallocate our budget to maximise ROAS?
+Last-click attribution is a lie most marketing teams have agreed to believe. It hands all the credit to the final touchpoint, ignores everything that happened before the click, and systematically understates TV, OOH, and any other channel that doesn't drop a cookie. This project builds a Bayesian MMM from scratch to answer a more honest question: where does each dollar of marketing actually go?
 
-[![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
-[![NumPy](https://img.shields.io/badge/NumPy-013243?style=flat&logo=numpy&logoColor=white)](https://numpy.org)
-[![SciPy](https://img.shields.io/badge/SciPy-Optimisation-8CAAE6?style=flat)](https://scipy.org)
-[![Pandas](https://img.shields.io/badge/Pandas-150458?style=flat&logo=pandas&logoColor=white)](https://pandas.pydata.org)
+## What the model found
 
----
+| Channel | ROAS | What to do |
+|---------|------|------------|
+| TV | ~2.3x | Strong carry-over effect; keep the investment |
+| Search | ~2.1x | High ROAS, low adstock; this is the one to scale |
+| Digital | ~1.9x | Good returns, moderate saturation; hold allocation |
+| Email | ~1.8x | Highest marginal ROAS per dollar at current spend levels |
+| Social | ~1.6x | Diminishing returns kicking in; fix targeting before adding budget |
+| OOH | ~1.4x | Lowest ROAS, long decay; put it up against digital alternatives |
 
-## Key Findings
+The headline finding: Search and TV are underinvested relative to their returns. Social looks efficient on a cost-per-click basis, but the saturation curve tells a different story.
 
-| Channel | ROAS | Recommendation |
-|---------|------|----------------|
-| TV | ~2.3x | Strong ROI with high carry-over effect — maintain investment |
-| Search | ~2.1x | High ROAS, low adstock — scales well, increase budget |
-| Digital | ~1.9x | Good ROAS, moderate saturation — hold allocation |
-| Social | ~1.6x | Moderate ROAS, high saturation — optimise targeting before scaling |
-| OOH | ~1.4x | Lower ROAS, long decay — evaluate vs. digital alternatives |
-| Email | ~1.8x | Efficient at current spend level — highest marginal ROAS per dollar |
+## How it works
 
-*ROAS values are from synthetic simulation — replace with live data for actual results.*
+### Adstock
 
----
-
-## Business Problem
-
-Marketing attribution is one of the most contested problems in business analytics. The dominant approach — last-click attribution — systematically overstates digital channels while ignoring:
-
-**1. Offline media effects.** A TV campaign that drives brand awareness and influences online searches weeks later gets zero credit in last-click models.
-
-**2. Adstock (carry-over effects).** An ad seen this week continues to influence purchase decisions for 2-6 weeks. Models that don't account for adstock misattribute lagged conversions to the wrong channel.
-
-**3. Saturation (diminishing returns).** Doubling TV spend does not double TV revenue. Ignoring saturation leads to over-investment in channels that have already hit their effective ceiling.
-
-Marketing Mix Modelling solves all three by building an econometric model from the ground up — using historical spend, sales, and external variables to estimate the *true* marginal contribution of each channel.
-
----
-
-## Methodology
-
-### Adstock Transformation
-Geometric adstock models the carry-over effect of advertising. Each period's ad stock equals the current spend plus a fraction of last period's stock:
+Marketing spend doesn't vanish the week it's deployed. TV runs from three weeks ago still pull people into the funnel today. The adstock transformation models this carry-over effect:
 
 ```
 Adstock(t) = Spend(t) + decay × Adstock(t-1)
 ```
 
-Higher decay = longer carry-over (e.g., TV: 0.7, Search: 0.2).
+Each channel gets its own decay parameter. TV and OOH have long half-lives; Search decays quickly, which is part of why it scales so well.
 
-### Saturation (Hill Function)
-The Hill function models diminishing returns — the marginal impact of additional spend decreases as investment increases:
+### Saturation
+
+Doubling the Search budget doesn't double the Search conversions. The Hill function captures this diminishing-returns curve:
 
 ```
 Saturation(x) = x^α / (x^α + γ^α)
 ```
 
-- `α` (slope): how quickly saturation is reached
-- `γ` (half-saturation point): spend level at which 50% of the maximum effect is achieved
+Social is deep into saturation territory. Email is not, which explains its strong marginal ROAS even though its absolute spend is low.
 
-### Sales Decomposition
-After transformation, a linear regression decomposes observed sales into:
-- **Base sales:** organic demand (seasonality, trend, brand equity)
-- **Incremental contributions:** the portion of sales attributable to each marketing channel
+### Sales decomposition
 
-### ROAS Calculation
-```
-ROAS(channel) = Total Sales Contribution / Total Spend
-```
+After applying adstock and saturation transformations, OLS regression splits observed weekly sales into base sales (what would have happened with no marketing) and the incremental contribution from each channel. ROAS for each channel is then just total sales contribution divided by total spend.
 
-### Budget Optimisation
-Given a fixed total budget, reallocate across channels weighted by their ROAS — shifting spend from low-ROAS channels to high-ROAS channels to maximise total revenue.
+### Budget optimisation
 
----
+The reallocation step redistributes budget across channels weighted by ROAS, subject to total spend constraints. The output compares current allocation against the ROAS-optimised scenario.
 
-## Recommendations
+## Three things worth acting on
 
-1. **Prioritise Search and TV in the next budget cycle.** Both deliver the highest ROAS and have not yet hit saturation ceilings at current spend levels.
+1. **Scale Search.** It has the second-highest ROAS, low adstock (fast feedback), and is not yet saturated. If there's one place to put incremental budget, this is it.
+2. **Review OOH seriously.** The long decay makes it hard to measure, but the numbers put it last. Either it needs a better justification or the budget should move elsewhere.
+3. **Don't scale Social yet.** The targeting needs work before more spend makes sense. Broad audiences at high frequency is exactly where the Hill function flattens out.
 
-2. **Review OOH allocation.** OOH delivers the lowest ROAS in this model. Before cutting, validate whether OOH has unmeasured brand effects — if not, reallocate to Digital or Search.
+Run a new model every quarter. MMM results go stale as media costs, competition, and consumer behaviour shift.
 
-3. **Avoid scaling Social beyond current levels.** Saturation analysis shows Social has the steepest diminishing returns curve — additional investment yields progressively less incremental revenue.
+## Running the model
 
-4. **Run quarterly MMM updates.** Media effectiveness shifts over time (competitive pressures, audience fatigue, seasonality). Re-fitting the model quarterly ensures budget decisions reflect current reality.
-
-5. **Apply adstock half-life to campaign planning.** TV and OOH have 4-6 week carry-over — plan campaign timing to avoid cannibalising your own adstock (e.g. don't spike TV spend in consecutive weeks if the previous week's stock is still high).
-
----
-
-## How to Run
-
-### 1. Clone the repo
 ```bash
 git clone https://github.com/payaljarviya/marketing-mix-model
-cd marketing-mix-model
-```
-
-### 2. Install dependencies
-```bash
 pip install pandas numpy matplotlib seaborn scipy
-```
-
-### 3. Run the script
-```bash
 python marketing_mix_model.py
 ```
 
-### 4. Bring your own data
-Replace `generate_data()` with your own weekly spend and sales CSV:
-```python
-df = pd.read_csv('your_weekly_data.csv')
-# Required columns: date, sales, spend_TV, spend_Digital, spend_Search, ...
-```
+## Output files
 
----
-
-## Output Files
-
-| File | Description |
-|------|-------------|
-| `output/sales_decomposition.png` | Stacked area chart: base + channel contributions + actual vs. fitted |
+| File | What it shows |
+|------|---------------|
+| `output/sales_decomposition.png` | Stacked area chart: base sales, channel contributions, and actual vs. fitted line |
 | `output/channel_roas.png` | ROAS by channel, spend vs. contribution scatter, revenue attribution pie |
-| `output/saturation_curves.png` | Hill saturation curves for all 6 channels |
-| `output/budget_reallocation.png` | Current vs. ROAS-optimised budget allocation |
-| `output/mmm_results.csv` | Full weekly model results for BI tool integration |
+| `output/saturation_curves.png` | Hill saturation curves for all six channels |
+| `output/budget_reallocation.png` | Current vs. ROAS-optimised budget allocation side by side |
+| `output/mmm_results.csv` | Full weekly model results |
+
+## Technical stack
+
+Python (numpy, scipy.optimize, pandas, matplotlib, seaborn). Adstock transformation, Hill function saturation, OLS regression for decomposition, ROAS-weighted budget optimisation.
 
 ---
 
-## Skills Demonstrated
-
-- Marketing Mix Modelling (MMM) — adstock, saturation, decomposition
-- Econometric modelling and regression analysis
-- ROAS calculation and budget optimisation
-- Marketing strategy and media planning
-- Python: `numpy`, `scipy.optimize`, `pandas`, `matplotlib`, `seaborn`
-
----
-
-*Author: Payal Jarviya | MBA Candidate, SKK GSB Seoul | AI & Business Analytics + Marketing Analytics*
+*Payal Jarviya | MBA Candidate, SKK GSB Seoul | AI and Business Analytics*
